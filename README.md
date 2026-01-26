@@ -82,3 +82,4 @@ pip install -r requirements.txt
 - [ ] 텍스트 추출 기능 구현
 - [ ] 결과 시각화 및 내보내기
 - [ ] 데이터 구조화 및 분석
+.
