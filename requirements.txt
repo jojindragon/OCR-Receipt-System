@@ -1,0 +1,8 @@
+# 기본 Streamlit 패키지
+streamlit==1.31.0
+
+# 팀원들이 필요한 라이브러리를 아래에 추가하세요
+# 예:
+# pillow==10.2.0
+# opencv-python==4.9.0.80
+# pytesseract==0.3.10

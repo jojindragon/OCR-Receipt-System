@@ -175,6 +175,13 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Streamlit
+.streamlit/secrets.toml
+
+# 프로젝트 데이터 파일
+data/*
+!data/.gitkeep
+
 # Abstra
 # Abstra is an AI-powered process automation framework.
 # Ignore directories containing user credentials, local state, and settings.
