@@ -179,8 +179,9 @@ cython_debug/
 .streamlit/secrets.toml
 
 # 프로젝트 데이터 파일
-data/*
-!data/.gitkeep
+data/receipts/*
+!data/receipts/.gitkeep
+data/*.db
 
 # Abstra
 # Abstra is an AI-powered process automation framework.

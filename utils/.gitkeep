@@ -1,6 +1,0 @@
-# 공통 유틸리티 함수를 추가할 디렉토리
-#
-# 예시:
-# - image_utils.py (이미지 처리 관련)
-# - file_utils.py (파일 처리 관련)
-# - ocr_utils.py (OCR 처리 관련)
