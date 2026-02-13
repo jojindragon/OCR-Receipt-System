@@ -1,9 +1,52 @@
 # =============================================================================
-# api.py - API 라우트 (백엔드 서버)
+# api.py - API 모듈 통합 진입점
 # =============================================================================
 # 담당: 백엔드
-# 설명: REST API 엔드포인트 정의
-#       - 영수증 업로드 / 조회 / 수정 / 삭제
-#       - 통계 데이터 조회
-#       - 프론트엔드(Streamlit)와 통신하는 API
+# 설명: 모든 API 함수를 한 곳에서 import 할 수 있도록 제공
+#       실제 구현은 backend/api/ 폴더에 테이블별로 분리
+#
+# 사용 예시:
+#   from backend.api import create_user, get_all_receipts
+#   또는
+#   from backend.api.users import create_user
 # =============================================================================
+
+# 사용자 API
+from backend.api.users import (
+    create_user,
+    get_user_by_id,
+    get_user_by_user_id,
+    get_all_users,
+    update_user,
+    delete_user,
+)
+
+# 카테고리 API
+from backend.api.categories import (
+    create_category,
+    get_category_by_id,
+    get_all_categories,
+    update_category,
+    delete_category,
+)
+
+# 결제수단 API
+from backend.api.payment_methods import (
+    create_payment_method,
+    get_payment_method_by_id,
+    get_all_payment_methods,
+    update_payment_method,
+    delete_payment_method,
+)
+
+# 영수증 API
+from backend.api.receipts import (
+    create_receipt,
+    get_receipt_by_id,
+    get_receipts_by_user,
+    get_receipts_by_category,
+    get_receipts_by_date_range,
+    get_all_receipts,
+    update_receipt,
+    delete_receipt,
+)
