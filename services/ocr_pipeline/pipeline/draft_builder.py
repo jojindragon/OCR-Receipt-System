@@ -1,28 +1,29 @@
 def build_draft(image_path: str, parsed: dict) -> dict:
     """
-    Build initial receipt draft from parsed OCR output.
+    파싱 결과로 부터 결과 초안(draft)을 만들기.
 
-    This function defines the domain boundary between:
-    - Parsing layer
-    - Validation layer
-    - Downstream consumers (API / frontend)
+    도메인 경계:
+    - OCR
+    - Parsing
+    - Downstream API / Backend
+
+    Validation 층은 제거 v01.5
     """
 
     draft = {
         "image_path": image_path,
 
-        # Core parsed data
-        "items": parsed.get("items", []),
-        "total_candidates": parsed.get("total_candidates", []),
-
-        # Optional future fields (kept explicit for schema stability)
+        # 파싱된 정보들
         "store_name": parsed.get("store_name"),
         "transaction_date": parsed.get("transaction_date"),
+        "total": parsed.get("total"),
+        "payment": parsed.get("payment"),
+        "category": parsed.get("category"),
 
-        # Validation state (updated by rule_engine)
-        "validation_status": "INIT",
+        # Items (현재 비활성 또는 빈 리스트 유지)
+        "items": parsed.get("items", []),
 
-        # Structured event log (audit trace)
+        # 이벤트 로그 기록
         "events": []
     }
 
