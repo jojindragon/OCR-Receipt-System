@@ -1,12 +1,10 @@
-# services/ocr_pipeline/run_pipeline.py
-
 from services.ocr_pipeline.logging.logger import PipelineLogger
 from services.ocr_pipeline.ocr.google_vision_adapter import GoogleVisionAdapter
 from services.ocr_pipeline.parsing.parser import parse_text
 from services.ocr_pipeline.pipeline.draft_builder import build_draft
 from services.ocr_pipeline.validation.validator import validate_receipt
 from services.ocr_pipeline.persistence.db_mapper import map_to_db_schema
-from services.ocr_pipeline.domain.receipt_draft import to_receipt_draft
+from backend.api.receipts import create_receipt
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -40,15 +38,35 @@ def run_pipeline(image_path: str, verbose: bool = True) -> dict:
         draft = build_draft(image_path, parsed)
         draft["events"] = logger.get_events()
 
-        # DB Insert 준비 여부 판단(validation 성공 시에만)
+        draft["validation_status"] = validation["validation_status"]
+        draft["issues"] = validation["issues"]
+
+        # DB Insert 준비 여부 판단(validation 성공 시에만)          
         if validation["validation_status"] == "success":
             db_schema = map_to_db_schema(image_path, parsed)
             draft["db_insert_ready"] = True
             draft["db_payload"] = db_schema
-        else:
-            draft["db_insert_ready"] = False
 
-        return draft
+            try:
+                db_result = create_receipt(
+                    user_id=db_schema["user_id"],
+                    category_id=db_schema["category_id"],
+                    payment_method_id=db_schema["payment_method_id"],
+                    date=db_schema["date"],
+                    total_amount=db_schema["total_amount"],
+                    store_name=db_schema["store_name"],
+                    image_path=db_schema["image_path"],
+                    details=db_schema["details"]
+                )
+
+                draft["db_inserted"] = True
+                draft["db_response"] = db_result
+
+            except Exception as e:
+                draft["db_inserted"] = False
+                draft["db_error"] = str(e)
+
+        return draft    
 
     except Exception as e:
         logger.log_error("PIPELINE", e)

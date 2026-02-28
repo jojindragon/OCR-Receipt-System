@@ -3,7 +3,7 @@ from datetime import datetime
 
 
 # --------------------------------------------------
-# 1️⃣ Store Name
+# 1️⃣ Store Name 강화
 # --------------------------------------------------
 def extract_store_name(lines):
 
@@ -21,19 +21,15 @@ def extract_store_name(lines):
                 name = m.group(1).strip()
                 if len(name) > 1:
                     return name
-
-    STORE_KEYWORDS = [
-        "점", "마트", "상회", "스토어", "편의점",
-        "카페", "커피", "식당", "분식", "치킨", "버거"
-    ]
-
+                        
     BLOCK_KEYWORDS = [
         "사업자", "TEL", "전화", "합계", "총액",
         "카드", "단가", "수량", "금액", "상품",
-        "고객용", "주문", "요청", "주소"
+        "고객용", "주문", "요청", "주소",
+        "대한민국", "고객", "APP", "메뉴"
     ]
 
-    candidates = lines[:10]
+    candidates = lines[:5]  # 상단 5줄에서 후보 추출
 
     best_score = -999
     best_text = ""
@@ -41,11 +37,20 @@ def extract_store_name(lines):
     for text in candidates:
         score = 0
 
-        if re.search(r"[가-힣]", text): score += 2
-        if not re.search(r"\d", text): score += 1
-        if 2 <= len(text) <= 20: score += 1
-        if any(k in text for k in STORE_KEYWORDS): score += 2
-        if any(k in text for k in BLOCK_KEYWORDS): score -= 5
+        if re.search(r"[가-힣A-Za-z]", text): score += 2
+        if not re.search(r"\d", text): score += 2
+        if 2 <= len(text) <= 25: score += 1
+
+        # 영어 브랜드 가산점
+        if re.match(r"^[A-Za-z&\-\s]+$", text):
+            score += 3
+
+        # 숫자 다수 포함 감점
+        if re.search(r"\d{2,}", text):
+            score -= 3
+
+        if any(k in text for k in BLOCK_KEYWORDS):
+            score -= 5
 
         if score > best_score:
             best_score = score
@@ -84,54 +89,79 @@ def extract_date(lines):
 
 
 # --------------------------------------------------
-# 3️⃣ Total (🔥 강화 로직)
+# 3️⃣ Total 계층형 구조로 교체
 # --------------------------------------------------
 def extract_total(lines):
 
-    SKIP_KEYWORDS = ["받은금액", "상품권", "거스름", "내신금액", "면세", "과세", "부가세"]
+    EXCLUDE_KEYWORDS = ["받은금액", "상품권", "거스름", "내신금액", "면세", "과세", "부가세", "세액",
+        "단가", "수량", "상품코드", "상품명", "품목", "가격", "할인", "할인액", "총할인*", "적립", "포인트", "쿠폰", "잔액",
+        "예금", "계좌", "카드번호", "승인번호", "사업자등록번호", "전화번호", "주소", "대표자", "사업자", 
+        "상호", "매장", "가맹점", "주문", "요청", "APP", "고객", "고객용", "대한민국", "영수증", "영수증용",
+        "세금계산서", "계산서", "청구서", "명세서"]
 
-    TOTAL_PATTERN = r"(합\s*계|결\s*제\s*대\s*상|총\s*액|결\s*제\s*금\s*액)"
+    PRIORITY_KEYWORDS = [
+        "카드청구액",
+        "결제대상금액",
+        "결제금액",
+        "결제액",
+        "결제금",
+        "합계",
+        "총액",
+        "총합계",
+        "총금액",
+        "총",
+        "총합",
+        "계",
+        "총계",
+        "금액",
+        "청구금액",
+        "청구액",
+        "지불금액",
+        "지불액",
+        "실결제금액",
+        "실결제액",
+        "실제결제금액",
+        "실제결제액"
+    ]    
 
-    # 1차 시도
-    for i, text in enumerate(lines):
+    # 1️⃣ 우선순위 기반 탐색
+    for keyword in PRIORITY_KEYWORDS:
+        for i, text in enumerate(lines):
+            if keyword in text:
 
-        if any(s in text.replace(" ", "") for s in SKIP_KEYWORDS):
-            continue
+                # 같은 줄 숫자
+                nums = re.findall(r"\d{1,3}(?:,\d{3})+", text)
+                if nums:
+                    return int(nums[-1].replace(",", ""))
 
-        if re.search(TOTAL_PATTERN, text.replace(" ", "")):
-
-            nums = re.findall(r"\d{1,3}(?:,\d{3})+", text)
-            if nums:
-                return int(nums[-1].replace(",", ""))
-
-            for j in range(1, 4):
-                if i + j < len(lines):
-                    next_line = lines[i+j]
-
-                    if any(s in next_line.replace(" ", "") for s in SKIP_KEYWORDS):
-                        break
-
-                    nums = re.findall(r"\d{1,3}(?:,\d{3})+", next_line)
+                # 다음 줄 탐색
+                if i + 1 < len(lines):
+                    nums = re.findall(r"\d{1,3}(?:,\d{3})+", lines[i+1])
                     if nums:
                         return int(nums[-1].replace(",", ""))
 
-    # 2차 시도
-    all_nums = []
+    # 2️⃣ fallback 후보 수집
+    candidates = []
 
     for text in lines:
-        clean_text = text.replace(" ", "")
+        clean = text.replace(" ", "")
 
-        if any(s in clean_text for s in SKIP_KEYWORDS): continue
-        if any(char in text for char in [":", "-"]): continue
+        # 할인(-) 제외
+        if "-" in text:
+            continue
+
+        # 세금/단가 제외
+        if any(k in clean for k in EXCLUDE_KEYWORDS):
+            continue
 
         nums = re.findall(r"\d{1,3}(?:,\d{3})+", text)
 
         for n in nums:
             val = int(n.replace(",", ""))
             if val >= 500:
-                all_nums.append(val)
+                candidates.append(val)
 
-    return max(all_nums) if all_nums else 0
+    return max(candidates) if candidates else 0
 
 
 # --------------------------------------------------
