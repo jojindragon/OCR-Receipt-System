@@ -1,6 +1,8 @@
 import re
 from datetime import datetime
 
+from .dict.store_dict import STORE_CATEGORY_RULES
+from .dict.item_dict import ITEM_CATEGORY_RULES
 
 # --------------------------------------------------
 # 1️⃣ Store Name 강화
@@ -93,35 +95,18 @@ def extract_date(lines):
 # --------------------------------------------------
 def extract_total(lines):
 
-    EXCLUDE_KEYWORDS = ["받은금액", "상품권", "거스름", "내신금액", "면세", "과세", "부가세", "세액",
+    EXCLUDE_KEYWORDS = [
+        "받은금액", "상품권", "거스름", "내신금액", "면세", "과세", "부가세", "세액",
         "단가", "수량", "상품코드", "상품명", "품목", "가격", "할인", "할인액", "총할인*", "적립", "포인트", "쿠폰", "잔액",
         "예금", "계좌", "카드번호", "승인번호", "사업자등록번호", "전화번호", "주소", "대표자", "사업자", 
         "상호", "매장", "가맹점", "주문", "요청", "APP", "고객", "고객용", "대한민국", "영수증", "영수증용",
-        "세금계산서", "계산서", "청구서", "명세서"]
+        "세금계산서", "계산서", "청구서", "명세서"
+        ]
 
     PRIORITY_KEYWORDS = [
-        "카드청구액",
-        "결제대상금액",
-        "결제금액",
-        "결제액",
-        "결제금",
-        "합계",
-        "총액",
-        "총합계",
-        "총금액",
-        "총",
-        "총합",
-        "계",
-        "총계",
-        "금액",
-        "청구금액",
-        "청구액",
-        "지불금액",
-        "지불액",
-        "실결제금액",
-        "실결제액",
-        "실제결제금액",
-        "실제결제액"
+        "카드청구액", "결제대상금액", "결제금액", "결제액", "결제금", "합계", "총액", "총합계", "총금액", "총",
+        "총합", "계", "총계", "금액", "청구금액", "청구액", "지불금액", "지불액", "실결제금액", "실결제액"
+        "실제결제금액", "실제결제액"
     ]    
 
     # 1️⃣ 우선순위 기반 탐색
@@ -168,48 +153,45 @@ def extract_total(lines):
 # 4️⃣ Payment
 # --------------------------------------------------
 def extract_payment(lines):
-    for text in lines:
-        if "카드" in text:
-            return "card"
-        if "현금" in text:
-            return "cash"
-        if "페이" in text:
-            return "app"
+
+    # 하단 15줄만 탐색 (결제 영역)
+    target_lines = lines[-15:]
+
+    PAYMENT_PRIORITY = [
+        ("페이", "app"),
+        ("현금", "cash"),
+        ("카드", "card"),
+    ]
+
+    for keyword, label in PAYMENT_PRIORITY:
+        for text in target_lines:
+
+            # 환불 안내 문구 제외
+            if "환불" in text or "지참" in text or "영수증" in text:
+                continue
+
+            if keyword in text:
+                return label
+
     return ""
 
 
 # --------------------------------------------------
 # 5️⃣ Category
 # --------------------------------------------------
-CATEGORY_RULES = {
-    "식비": ["식당", "김밥", "국밥", "치킨", "피자", "버거", "쌀국수"],
-    "카페": ["카페", "커피", "스타벅스", "이디야", "투썸", "메가커피"],
-    "편의점": ["CU", "GS25", "세븐일레븐", "이마트24"],
-    "교통": ["택시", "카카오T", "버스", "지하철", "KTX"],
-    "주유": ["주유", "SK에너지", "GS칼텍스", "현대오일뱅크", "S-OIL"],
-    "쇼핑": ["쿠팡", "11번가", "이마트", "홈플러스", "롯데마트", "백화점"],
-    "의료": ["약국", "병원", "치과", "한의원"]
-}
-
-
 def classify_category(store_name, full_text):
 
     store_upper = store_name.upper()
     text_upper = full_text.upper()
 
-    for category, keywords in CATEGORY_RULES.items():
+    # 1️⃣ store 기반 분류
+    for category, keywords in STORE_CATEGORY_RULES.items():
         for kw in keywords:
             if kw.upper() in store_upper:
                 return category
 
-    top_text = "\n".join(full_text.split("\n")[:10]).upper()
-
-    for category, keywords in CATEGORY_RULES.items():
-        for kw in keywords:
-            if kw.upper() in top_text:
-                return category
-
-    for category, keywords in CATEGORY_RULES.items():
+    # 2️⃣ 품목 기반 분류
+    for category, keywords in ITEM_CATEGORY_RULES.items():
         for kw in keywords:
             if kw.upper() in text_upper:
                 return category
@@ -218,7 +200,7 @@ def classify_category(store_name, full_text):
 
 
 # --------------------------------------------------
-# 🔥 최종 파이프라인 entry
+# 최종 파이프라인 entry
 # --------------------------------------------------
 def parse_text(ocr_result: dict) -> dict:
 
@@ -229,6 +211,17 @@ def parse_text(ocr_result: dict) -> dict:
     total = extract_total(lines)
     payment = extract_payment(lines)
     category = classify_category(store, ocr_result["full_text"])
+
+    full_text = ocr_result["full_text"]
+
+    # 배달/포장 fallback
+    if (not store or len(store) < 2) and (
+        "배달" in full_text or
+        "포장" in full_text or
+        "픽업" in full_text
+    ):
+        store = "배달/포장"
+        category = "식비"
 
     return {
         "store_name": store,
