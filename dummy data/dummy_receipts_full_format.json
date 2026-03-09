@@ -1,0 +1,362 @@
+[
+  {
+    "id": 1,
+    "user_id": 1,
+    "category_id": 4,
+    "payment_method_id": 2,
+    "date": "2024-01-16",
+    "total_amount": 28173,
+    "store_name": "배달의민족",
+    "image_path": "data/receipts/img001.jpg",
+    "details": [
+      {
+        "name": "라떼",
+        "quantity": 1,
+        "price": 28173
+      }
+    ],
+    "created_at": "2024-01-16T00:00:00"
+  },
+  {
+    "id": 2,
+    "user_id": 1,
+    "category_id": 6,
+    "payment_method_id": 1,
+    "date": "2024-01-17",
+    "total_amount": 10036,
+    "store_name": "스타벅스",
+    "image_path": "data/receipts/img002.jpg",
+    "details": [
+      {
+        "name": "전기장판",
+        "quantity": 2,
+        "price": 5018
+      }
+    ],
+    "created_at": "2024-01-17T00:00:00"
+  },
+  {
+    "id": 3,
+    "user_id": 1,
+    "category_id": 4,
+    "payment_method_id": 1,
+    "date": "2024-01-18",
+    "total_amount": 37925,
+    "store_name": "무신사",
+    "image_path": "data/receipts/img003.jpg",
+    "details": [
+      {
+        "name": "치킨",
+        "quantity": 1,
+        "price": 37925
+      }
+    ],
+    "created_at": "2024-01-18T00:00:00"
+  },
+  {
+    "id": 4,
+    "user_id": 1,
+    "category_id": 4,
+    "payment_method_id": 1,
+    "date": "2024-01-19",
+    "total_amount": 15644,
+    "store_name": "이마트",
+    "image_path": "data/receipts/img004.jpg",
+    "details": [
+      {
+        "name": "맨투맨",
+        "quantity": 2,
+        "price": 7822
+      }
+    ],
+    "created_at": "2024-01-19T00:00:00"
+  },
+  {
+    "id": 5,
+    "user_id": 1,
+    "category_id": 8,
+    "payment_method_id": 2,
+    "date": "2024-01-20",
+    "total_amount": 9607,
+    "store_name": "배달의민족",
+    "image_path": "data/receipts/img005.jpg",
+    "details": [
+      {
+        "name": "맨투맨",
+        "quantity": 1,
+        "price": 9607
+      }
+    ],
+    "created_at": "2024-01-20T00:00:00"
+  },
+  {
+    "id": 6,
+    "user_id": 1,
+    "category_id": 2,
+    "payment_method_id": 2,
+    "date": "2024-01-21",
+    "total_amount": 8564,
+    "store_name": "배달의민족",
+    "image_path": "data/receipts/img006.jpg",
+    "details": [
+      {
+        "name": "청바지",
+        "quantity": 1,
+        "price": 8564
+      }
+    ],
+    "created_at": "2024-01-21T00:00:00"
+  },
+  {
+    "id": 7,
+    "user_id": 1,
+    "category_id": 8,
+    "payment_method_id": 2,
+    "date": "2024-01-22",
+    "total_amount": 49738,
+    "store_name": "이마트",
+    "image_path": "data/receipts/img007.jpg",
+    "details": [
+      {
+        "name": "라떼",
+        "quantity": 1,
+        "price": 49738
+      }
+    ],
+    "created_at": "2024-01-22T00:00:00"
+  },
+  {
+    "id": 8,
+    "user_id": 1,
+    "category_id": 5,
+    "payment_method_id": 1,
+    "date": "2024-01-23",
+    "total_amount": 72256,
+    "store_name": "이마트",
+    "image_path": "data/receipts/img008.jpg",
+    "details": [
+      {
+        "name": "맨투맨",
+        "quantity": 2,
+        "price": 36128
+      }
+    ],
+    "created_at": "2024-01-23T00:00:00"
+  },
+  {
+    "id": 9,
+    "user_id": 1,
+    "category_id": 6,
+    "payment_method_id": 1,
+    "date": "2024-01-24",
+    "total_amount": 68708,
+    "store_name": "김밥천국",
+    "image_path": "data/receipts/img009.jpg",
+    "details": [
+      {
+        "name": "라면",
+        "quantity": 2,
+        "price": 34354
+      }
+    ],
+    "created_at": "2024-01-24T00:00:00"
+  },
+  {
+    "id": 10,
+    "user_id": 1,
+    "category_id": 4,
+    "payment_method_id": 2,
+    "date": "2024-01-25",
+    "total_amount": 46908,
+    "store_name": "무신사",
+    "image_path": "data/receipts/img010.jpg",
+    "details": [
+      {
+        "name": "청바지",
+        "quantity": 3,
+        "price": 15636
+      }
+    ],
+    "created_at": "2024-01-25T00:00:00"
+  },
+  {
+    "id": 11,
+    "user_id": 1,
+    "category_id": 7,
+    "payment_method_id": 2,
+    "date": "2024-01-26",
+    "total_amount": 48082,
+    "store_name": "이마트",
+    "image_path": "data/receipts/img011.jpg",
+    "details": [
+      {
+        "name": "치킨",
+        "quantity": 1,
+        "price": 48082
+      }
+    ],
+    "created_at": "2024-01-26T00:00:00"
+  },
+  {
+    "id": 12,
+    "user_id": 1,
+    "category_id": 7,
+    "payment_method_id": 2,
+    "date": "2024-01-27",
+    "total_amount": 16136,
+    "store_name": "쿠팡",
+    "image_path": "data/receipts/img012.jpg",
+    "details": [
+      {
+        "name": "라면",
+        "quantity": 2,
+        "price": 8068
+      }
+    ],
+    "created_at": "2024-01-27T00:00:00"
+  },
+  {
+    "id": 13,
+    "user_id": 1,
+    "category_id": 7,
+    "payment_method_id": 1,
+    "date": "2024-01-28",
+    "total_amount": 129615,
+    "store_name": "김밥천국",
+    "image_path": "data/receipts/img013.jpg",
+    "details": [
+      {
+        "name": "아메리카노",
+        "quantity": 3,
+        "price": 43205
+      }
+    ],
+    "created_at": "2024-01-28T00:00:00"
+  },
+  {
+    "id": 14,
+    "user_id": 1,
+    "category_id": 1,
+    "payment_method_id": 2,
+    "date": "2024-01-29",
+    "total_amount": 24156,
+    "store_name": "무신사",
+    "image_path": "data/receipts/img014.jpg",
+    "details": [
+      {
+        "name": "라떼",
+        "quantity": 2,
+        "price": 12078
+      }
+    ],
+    "created_at": "2024-01-29T00:00:00"
+  },
+  {
+    "id": 15,
+    "user_id": 1,
+    "category_id": 8,
+    "payment_method_id": 2,
+    "date": "2024-01-30",
+    "total_amount": 23451,
+    "store_name": "이마트",
+    "image_path": "data/receipts/img015.jpg",
+    "details": [
+      {
+        "name": "맨투맨",
+        "quantity": 3,
+        "price": 7817
+      }
+    ],
+    "created_at": "2024-01-30T00:00:00"
+  },
+  {
+    "id": 16,
+    "user_id": 1,
+    "category_id": 7,
+    "payment_method_id": 2,
+    "date": "2024-01-31",
+    "total_amount": 56246,
+    "store_name": "이마트",
+    "image_path": "data/receipts/img016.jpg",
+    "details": [
+      {
+        "name": "아메리카노",
+        "quantity": 2,
+        "price": 28123
+      }
+    ],
+    "created_at": "2024-01-31T00:00:00"
+  },
+  {
+    "id": 17,
+    "user_id": 1,
+    "category_id": 3,
+    "payment_method_id": 2,
+    "date": "2024-02-01",
+    "total_amount": 104835,
+    "store_name": "배달의민족",
+    "image_path": "data/receipts/img017.jpg",
+    "details": [
+      {
+        "name": "전기장판",
+        "quantity": 3,
+        "price": 34945
+      }
+    ],
+    "created_at": "2024-02-01T00:00:00"
+  },
+  {
+    "id": 18,
+    "user_id": 1,
+    "category_id": 8,
+    "payment_method_id": 1,
+    "date": "2024-02-02",
+    "total_amount": 37404,
+    "store_name": "김밥천국",
+    "image_path": "data/receipts/img018.jpg",
+    "details": [
+      {
+        "name": "치킨",
+        "quantity": 2,
+        "price": 18702
+      }
+    ],
+    "created_at": "2024-02-02T00:00:00"
+  },
+  {
+    "id": 19,
+    "user_id": 1,
+    "category_id": 2,
+    "payment_method_id": 2,
+    "date": "2024-02-03",
+    "total_amount": 20901,
+    "store_name": "무신사",
+    "image_path": "data/receipts/img019.jpg",
+    "details": [
+      {
+        "name": "치킨",
+        "quantity": 1,
+        "price": 20901
+      }
+    ],
+    "created_at": "2024-02-03T00:00:00"
+  },
+  {
+    "id": 20,
+    "user_id": 1,
+    "category_id": 1,
+    "payment_method_id": 1,
+    "date": "2024-02-04",
+    "total_amount": 12533,
+    "store_name": "김밥천국",
+    "image_path": "data/receipts/img020.jpg",
+    "details": [
+      {
+        "name": "전기장판",
+        "quantity": 1,
+        "price": 12533
+      }
+    ],
+    "created_at": "2024-02-04T00:00:00"
+  }
+]
