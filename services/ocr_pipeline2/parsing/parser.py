@@ -1,65 +1,155 @@
 import re
 from datetime import datetime
 
+from .dict.store_dict import BRAND_KEYWORDS
+from .dict.store_dict import STORE_GENERIC
 from .dict.store_dict import STORE_CATEGORY_RULES
 from .dict.item_dict import ITEM_CATEGORY_RULES
 
 # --------------------------------------------------
-# 1️⃣ Store Name 강화
+# 1️⃣ Store Name
 # --------------------------------------------------
+
+def normalize_text(t):
+    return re.sub(r"[^A-Z0-9가-힣]", "", t.upper())
+
+
 def extract_store_name(lines):
 
-    store_patterns = [
-        r"주문\s*매장[:：]?\s*(.+)",
-        r"상호[:：]?\s*(.+)",
-        r"매장명[:：]?\s*(.+)",
-        r"가맹점[:：]?\s*(.+)",
+    # 🔹 VAN / 결제사 차단
+    VAN_BLOCK = [
+        "KOCES","KICC","한국신용카드","신용카드","신용매출"
     ]
 
-    for text in lines:
-        for p in store_patterns:
-            m = re.search(p, text)
-            if m:
-                name = m.group(1).strip()
-                if len(name) > 1:
-                    return name
-                        
+    # --------------------------------------------------
+    # 1️⃣ 브랜드 사전 탐색
+    # --------------------------------------------------
+    for text in lines[:10]:
+
+        if any(v in text for v in VAN_BLOCK):
+            continue
+
+        text_norm = normalize_text(text)
+
+        for brand in BRAND_KEYWORDS:
+
+            brand_norm = normalize_text(brand)
+
+            if brand_norm in text_norm:
+                return text.strip()
+
     BLOCK_KEYWORDS = [
-        "사업자", "TEL", "전화", "합계", "총액",
-        "카드", "단가", "수량", "금액", "상품",
-        "고객용", "주문", "요청", "주소",
-        "대한민국", "고객", "APP", "메뉴"
+        "사업자","TEL","전화","합계","총액",
+        "카드","단가","수량","금액","상품",
+        "고객용","주문","요청","주소",
+        "대한민국","고객","APP","메뉴"
     ]
 
-    candidates = lines[:5]  # 상단 5줄에서 후보 추출
+    candidates = lines[:10]
 
     best_score = -999
     best_text = ""
 
+    # --------------------------------------------------
+    # 2️⃣ 휴리스틱 점수 기반 탐색
+    # --------------------------------------------------
     for text in candidates:
+
+        if "가맹점주소" in text:
+            continue
+
+        if "신고안내" in text:
+            continue
+
+        if any(v in text for v in VAN_BLOCK):
+            continue
+
         score = 0
 
-        if re.search(r"[가-힣A-Za-z]", text): score += 2
-        if not re.search(r"\d", text): score += 2
-        if 2 <= len(text) <= 25: score += 1
+        if re.search(r"[가-힣A-Za-z]", text):
+            score += 2
 
-        # 영어 브랜드 가산점
+        if not re.search(r"\d", text):
+            score += 2
+
+        if 2 <= len(text) <= 25:
+            score += 1
+
         if re.match(r"^[A-Za-z&\-\s]+$", text):
             score += 3
 
-        # 숫자 다수 포함 감점
         if re.search(r"\d{2,}", text):
             score -= 3
 
         if any(k in text for k in BLOCK_KEYWORDS):
             score -= 5
 
+        if any(g in text.lower() for g in STORE_GENERIC):
+            score += 2
+
         if score > best_score:
             best_score = score
             best_text = text
 
-    return best_text
+    if best_text:
+        return best_text.strip()
 
+    # --------------------------------------------------
+    # 3️⃣ 매장 필드 regex (마지막 fallback)
+    # --------------------------------------------------
+    store_patterns = [
+        r"주문\s*매장\s*[:：]\s*(.+)",
+        r"상호\s*[:：]\s*(.+)",
+        r"매장명\s*[:：]\s*(.+)",
+        r"가맹점명\s*[:：]\s*(.+)",
+    ]
+
+    for text in lines:
+
+        for p in store_patterns:
+
+            m = re.search(p, text)
+
+            if m:
+
+                name = m.group(1).strip()
+
+                if "가맹점주소" in name:
+                    continue
+
+                if 2 <= len(name) <= 30:
+                    return name
+
+    return ""
+
+
+# --------------------------------------------------
+# 2️⃣ Date
+# --------------------------------------------------
+def extract_date(lines):
+
+    full_text = "\n".join(lines)
+
+    patterns = [
+        r"(\d{4}|\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})",
+        r"(\d{4})(\d{2})(\d{2})"
+    ]
+
+    for pattern in patterns:
+        for m in re.finditer(pattern, full_text):
+            y, mth, d = m.groups()
+
+            if len(y) == 2:
+                y = "20" + y
+
+            try:
+                dt = datetime(int(y), int(mth), int(d))
+                if 2010 <= dt.year <= 2030:
+                    return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+    return ""
 
 # --------------------------------------------------
 # 2️⃣ Date
@@ -150,6 +240,35 @@ def extract_total(lines):
 
 
 # --------------------------------------------------
+# 2️⃣ Date
+# --------------------------------------------------
+def extract_date(lines):
+
+    full_text = "\n".join(lines)
+
+    patterns = [
+        r"(\d{4}|\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})",
+        r"(\d{4})(\d{2})(\d{2})"
+    ]
+
+    for pattern in patterns:
+        for m in re.finditer(pattern, full_text):
+            y, mth, d = m.groups()
+
+            if len(y) == 2:
+                y = "20" + y
+
+            try:
+                dt = datetime(int(y), int(mth), int(d))
+                if 2010 <= dt.year <= 2030:
+                    return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+    return ""
+
+
+# --------------------------------------------------
 # 4️⃣ Payment
 # --------------------------------------------------
 def extract_payment(lines):
@@ -200,6 +319,169 @@ def classify_category(store_name, full_text):
 
 
 # --------------------------------------------------
+# 6️⃣ Items 추출 추가
+# --------------------------------------------------
+def extract_items(lines):
+
+    EXCLUDE_KEYWORDS = [
+        "%", "APP", "P", "가격", "가맹점", "거스름", "고객", "고객용",
+        "과세", "계산서", "계좌", "대한민국", "단가", "대표", "대표자",
+        "매장", "면세", "명세서", "부가세", "사업자", "사업자등록번호",
+        "상호", "세금", "세금계산서", "세액", "수량", "승인", "승인번호",
+        "영수증", "영수증용", "예금", "요청", "주소", "점", "주문", "전화",
+        "전화번호", "총액", "총합", "총할인*", "카드", "카드번호",
+        "쿠폰", "내신금액", "상품권", "상품코드", "적립", "포인트",
+        "판매", "합계", "현금",
+
+        # 🔹 추가 노이즈 필터
+        "결제", "지불", "청구", "금액", "잔액", "번호", "CATID",
+        "POS", "KOCES", "KICC", "NO", "소계", "총계"
+    ]
+
+    items = []
+
+    # 전체 total 한번 계산
+    total_value = extract_total(lines)
+
+    # --------------------------------------------------
+    # 1️⃣ single line item 탐색
+    # --------------------------------------------------
+    for text in lines:
+
+        price_match = re.search(r"\d{1,3}(?:,\d{3})+", text)
+
+        if not price_match:
+            continue
+
+        if any(k in text for k in EXCLUDE_KEYWORDS):
+            continue
+
+        price = int(price_match.group().replace(",", ""))
+
+        if price < 500:
+            continue
+
+        # total과 동일한 값 제거
+        if price == total_value:
+            continue
+
+        # 가격이 줄 끝에 있는 경우만
+        if not text.strip().endswith(price_match.group()):
+            continue
+
+        name = text.replace(price_match.group(), "").strip()
+
+        if len(name) < 2:
+            continue
+
+        # 1️⃣ 한글 없는 항목 제거 (숫자, 코드 제거)
+        if not re.search(r"[가-힣]", name):
+            continue
+
+        # 2️⃣ 세금 / 결제 라인 제거
+        if re.search(r"(세|부가세|결제|합계|총액|금액)", name):
+            continue
+
+        # 3️⃣ 너무 긴 텍스트 제거 (영수증 설명문 방지)
+        if len(name) > 25:
+            continue
+
+        normalized = normalize_item(name)
+
+        items.append({
+            "name": name,          
+            "normalized": normalized, 
+            "price": price,
+            "qty": 1,
+            "line_text": text
+        })
+
+    # --------------------------------------------------
+    # 2️⃣ item + price 분리된 경우
+    # --------------------------------------------------
+    for i in range(len(lines)-1):
+
+        item_line = lines[i]
+        price_line = lines[i+1]
+
+        if len(item_line) > 40:
+            continue
+
+        if any(k in item_line for k in EXCLUDE_KEYWORDS):
+            continue
+
+        price = extract_price(price_line)
+
+        if not price:
+            continue
+
+        if price == total_value:
+            continue
+
+        name = item_line.strip()
+
+        if len(name) < 2:
+            continue
+
+        if re.fullmatch(r"[0-9\-* ]+", name):
+            continue
+
+        name = normalize_item(name)
+
+        items.append({
+            "name": name,
+            "price": price,
+            "qty": 1,
+            "line_text": item_line + " | " + price_line
+        })
+
+    # --------------------------------------------------
+    # 3️⃣ dedupe
+    # --------------------------------------------------
+    unique = []
+    seen = set()
+
+    for item in items:
+        key = (item["name"], item["price"])
+
+        if key not in seen:
+            unique.append(item)
+            seen.add(key)
+
+    return unique
+
+
+def extract_price(text):
+
+    match = re.search(r"\d{1,3}(?:,\d{3})+", text)
+
+    if not match:
+        return None
+
+    value = int(match.group().replace(",", ""))
+
+    if value < 500:
+        return None
+
+    return value
+
+
+# --------------------------------------------------
+# item normalization
+# --------------------------------------------------
+def normalize_item(name):
+
+    name_upper = name.upper()
+
+    for _, keywords in ITEM_CATEGORY_RULES.items():
+        for kw in keywords:
+            if kw.upper() in name_upper:
+                return kw
+
+    return name
+
+
+# --------------------------------------------------
 # 최종 파이프라인 entry
 # --------------------------------------------------
 def parse_text(ocr_result: dict) -> dict:
@@ -211,7 +493,7 @@ def parse_text(ocr_result: dict) -> dict:
     total = extract_total(lines)
     payment = extract_payment(lines)
     category = classify_category(store, ocr_result["full_text"])
-
+    items = extract_items(lines)
     full_text = ocr_result["full_text"]
 
     # 배달/포장 fallback
@@ -229,5 +511,5 @@ def parse_text(ocr_result: dict) -> dict:
         "total": total,
         "payment": payment,
         "category": category,
-        "items": []
+        "items": items
     }
