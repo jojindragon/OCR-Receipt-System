@@ -15,13 +15,13 @@
 # =============================================================================
 
 
-# In[ ]:
+# In[1]:
 
 
 get_ipython().system('pip install google-generativeai')
 
 
-# In[ ]:
+# In[2]:
 
 
 # 분석 데이터 로드
@@ -33,10 +33,11 @@ with open("../dummy data/dummy_receipts_full_format.json", "r", encoding="utf-8"
 print(data)
 
 
-# In[ ]:
+# In[6]:
 
 
 # Gemini 연결
+import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 
@@ -46,8 +47,10 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=api_key)
 
+model = genai.GenerativeModel("gemini-2.5-flash")
 
-# In[ ]:
+
+# In[7]:
 
 
 # 프롬프트 생성
@@ -66,7 +69,7 @@ prompt = f"""
 """
 
 
-# In[ ]:
+# In[8]:
 
 
 # google Geminai 분석 실행
