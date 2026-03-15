@@ -25,6 +25,15 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "OcrReceipts")
 
+# =============================================================================
+# Gemini AI 설정
+# =============================================================================
+# .env 파일에 다음 값을 설정해야 합니다:
+# GEMINI_API_KEY=your-gemini-api-key
+# =============================================================================
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 
 def check_env():
     """
