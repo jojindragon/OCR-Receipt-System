@@ -4,32 +4,41 @@
 # 담당: 프론트엔드
 # 설명: 모바일 기기에 최적화된 영수증 OCR 시스템 UI
 #       - app.py에서 모바일 감지 시 이 파일로 분기
-#       - OCR_front.py와 동일한 기능 (로그인/회원가입 + 메인)
-#       - 세로 레이아웃, 큰 버튼, 터치 친화적 구성
+#       - OCR_front.py와 동일한 기능을 모바일 레이아웃으로 제공
+#       - 세로 1컬럼 레이아웃, 터치 친화적 구성
+#       - 사이드바 없음 → 상단 탭 메뉴로 대체
 #
-# 주요 차이점 (OCR_front.py 대비):
-#       - layout="centered" (좁은 화면에 최적화)
-#       - 2컬럼 → 1컬럼 세로 배치
-#       - 사이드바 없음 → 상단 메뉴로 대체
-#       - 모바일 친화적 CSS 적용
+# 포함 기능:
+#       - Supabase 로그인/회원가입 + localStorage 로그인 유지
+#       - OCR 파이프라인 영수증 인식 + DB/Storage 저장
+#       - 지출 분석 (연월 선택, 막대/선 그래프, 파이 차트)
+#       - AI 월별 조언 (Gemini)
+#       - 영수증 내역 페이지네이션 + 이미지 보기
 # =============================================================================
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import time
+import tempfile
+import os
 import sys
 from pathlib import Path
+from streamlit_js_eval import streamlit_js_eval
 
-# 프로젝트 루트를 path에 추가 (backend 모듈 import를 위해)
+# 프로젝트 루트를 path에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backend.api.users import get_user_by_user_id, create_user
+from backend.api.categories import get_all_categories
+from backend.api.receipts import create_receipt, get_receipts_by_user
+from backend.api.storage import upload_image, get_public_url
+from services.ocr_pipeline2.pipeline.run_pipeline import run_pipeline
+from services.ocr_pipeline2.persistence.db_mapper import CATEGORY_MAP, PAYMENT_MAP
 
 
 # =============================================================================
 # 1. 모바일 전용 CSS 스타일
-# =============================================================================
-# 모바일 화면에서 터치하기 쉽도록 버튼, 입력창 크기를 키움
 # =============================================================================
 def apply_mobile_style():
     st.markdown("""
@@ -37,50 +46,43 @@ def apply_mobile_style():
         /* 메인 컨테이너 패딩 축소 */
         .block-container {
             padding-top: 1rem;
-            padding-left: 1rem;
-            padding-right: 1rem;
+            padding-left: 0.8rem;
+            padding-right: 0.8rem;
         }
-
-        /* 입력창 높이 확대 (터치 친화적) */
-        .stTextInput > div > div > input {
+        /* 입력창 터치 친화적 */
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div > div,
+        .stDateInput > div > div > input {
             font-size: 16px;
             padding: 12px;
         }
-
         /* 버튼 크기 확대 */
         .stButton > button {
-            font-size: 18px;
+            font-size: 16px;
             padding: 12px;
             border-radius: 10px;
         }
-
         /* 사이드바 숨기기 */
-        [data-testid="stSidebar"] {
-            display: none;
-        }
-
+        [data-testid="stSidebar"] { display: none; }
         /* 파일 업로더 확대 */
-        [data-testid="stFileUploader"] {
-            padding: 10px;
-        }
-
-        /* 탭 폰트 크기 확대 */
+        [data-testid="stFileUploader"] { padding: 8px; }
+        /* 탭 폰트 크기 */
         .stTabs [data-baseweb="tab"] {
-            font-size: 16px;
-            padding: 10px 16px;
+            font-size: 15px;
+            padding: 10px 14px;
+        }
+        /* metric 카드 패딩 축소 */
+        [data-testid="stMetric"] {
+            padding: 8px 4px;
         }
     </style>
     """, unsafe_allow_html=True)
 
 
 # =============================================================================
-# 2. Supabase 연동 로그인/회원가입 함수
+# 2. Supabase 로그인/회원가입 함수
 # =============================================================================
-# OCR_front.py와 동일한 로직
-# =============================================================================
-
 def check_login(user_id: str, password: str) -> dict:
-    """로그인 확인 - Supabase users 테이블 조회"""
     try:
         user = get_user_by_user_id(user_id)
         if user and user.get("password") == password:
@@ -92,16 +94,11 @@ def check_login(user_id: str, password: str) -> dict:
 
 
 def register_user(user_id: str, password: str, name: str = None) -> bool:
-    """회원가입 - Supabase users 테이블에 추가"""
     try:
         existing = get_user_by_user_id(user_id)
         if existing:
             return False
-        result = create_user(
-            name=name or user_id,
-            user_id=user_id,
-            password=password
-        )
+        result = create_user(name=name or user_id, user_id=user_id, password=password)
         return result is not None
     except Exception as e:
         st.error(f"회원가입 오류: {e}")
@@ -111,6 +108,8 @@ def register_user(user_id: str, password: str, name: str = None) -> bool:
 # =============================================================================
 # 3. 세션 상태 초기화
 # =============================================================================
+st.set_page_config(page_title="영수증 OCR 장부", layout="centered")
+
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 if 'user_id' not in st.session_state:
@@ -120,12 +119,24 @@ if 'user_pk' not in st.session_state:
 if 'history' not in st.session_state:
     st.session_state['history'] = []
 
+# --- [로그아웃 처리 - localStorage 삭제] ---
+if st.session_state.get('pending_logout'):
+    streamlit_js_eval(js_expressions="localStorage.removeItem('ocr_user_id')", key="m_del_uid")
+    streamlit_js_eval(js_expressions="localStorage.removeItem('ocr_user_pk')", key="m_del_upk")
+    st.session_state['pending_logout'] = False
+
+# --- [localStorage에서 로그인 복원] ---
+if not st.session_state['logged_in'] and not st.session_state.get('pending_logout'):
+    saved_user_id = streamlit_js_eval(js_expressions="localStorage.getItem('ocr_user_id')", key="m_restore_uid")
+    saved_user_pk = streamlit_js_eval(js_expressions="localStorage.getItem('ocr_user_pk')", key="m_restore_upk")
+    if saved_user_id and saved_user_pk and saved_user_id != "null":
+        st.session_state['logged_in'] = True
+        st.session_state['user_id'] = saved_user_id
+        st.session_state['user_pk'] = int(saved_user_pk)
+
 
 # =============================================================================
 # 4. 모바일 로그인 / 회원가입 화면
-# =============================================================================
-# - 세로 중앙 정렬
-# - 큰 입력창과 버튼
 # =============================================================================
 def auth_page():
     st.markdown("<h2 style='text-align: center;'>🔐 OCR 장부</h2>", unsafe_allow_html=True)
@@ -133,41 +144,35 @@ def auth_page():
 
     tab1, tab2 = st.tabs(["로그인", "회원가입"])
 
-    # --- 로그인 탭 ---
     with tab1:
         login_id = st.text_input("아이디", key="m_login_id", placeholder="아이디를 입력하세요")
         login_pw = st.text_input("비밀번호", type="password", key="m_login_pw", placeholder="비밀번호를 입력하세요")
-
-        st.markdown("")  # 여백
-
+        st.markdown("")
         if st.button("로그인", use_container_width=True, type="primary"):
-            # Supabase users 테이블에서 확인
             user = check_login(login_id, login_pw)
             if user:
                 st.session_state['logged_in'] = True
                 st.session_state['user_id'] = login_id
                 st.session_state['user_pk'] = user.get("id")
+                streamlit_js_eval(js_expressions=f"localStorage.setItem('ocr_user_id', '{login_id}')", key="m_save_uid")
+                streamlit_js_eval(js_expressions=f"localStorage.setItem('ocr_user_pk', '{user.get('id')}')", key="m_save_upk")
                 st.success(f"{login_id}님 환영합니다!")
                 time.sleep(0.5)
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
-    # --- 회원가입 탭 ---
     with tab2:
         new_id = st.text_input("사용할 아이디", key="m_new_id", placeholder="아이디")
         new_pw = st.text_input("사용할 비밀번호", type="password", key="m_new_pw", placeholder="비밀번호")
         confirm_pw = st.text_input("비밀번호 확인", type="password", key="m_confirm_pw", placeholder="비밀번호 확인")
-
-        st.markdown("")  # 여백
-
+        st.markdown("")
         if st.button("회원가입 완료", use_container_width=True, type="primary"):
             if not new_id or not new_pw:
                 st.warning("아이디와 비밀번호를 모두 입력해주세요.")
             elif new_pw != confirm_pw:
                 st.error("비밀번호가 일치하지 않습니다.")
             else:
-                # Supabase users 테이블에 추가
                 if register_user(new_id, new_pw):
                     st.success("회원가입 성공! 로그인 탭에서 로그인해주세요.")
                 else:
@@ -175,72 +180,420 @@ def auth_page():
 
 
 # =============================================================================
-# 5. 모바일 메인 앱 화면
-# =============================================================================
-# - 사이드바 대신 상단에 사용자 정보 + 로그아웃
-# - 2컬럼 대신 세로 1컬럼 배치
-# - 영수증 업로드 → 추출 결과 → 장부 내역 순서
+# 5. 메인 앱 화면 - 상단 탭으로 페이지 전환
 # =============================================================================
 def main_app():
     # --- 상단 헤더 (사이드바 대체) ---
-    header_col1, header_col2 = st.columns([3, 1])
-    with header_col1:
+    h1, h2 = st.columns([3, 1])
+    with h1:
         st.markdown(f"👤 **{st.session_state['user_id']}**님")
-    with header_col2:
+    with h2:
         if st.button("로그아웃", use_container_width=True):
             st.session_state['logged_in'] = False
             st.session_state['user_id'] = None
             st.session_state['user_pk'] = None
+            st.session_state['pending_logout'] = True
             st.rerun()
 
-    st.markdown("---")
-    st.markdown("<h3 style='text-align: center;'>🧾 영수증 OCR 장부</h3>", unsafe_allow_html=True)
-    st.info("이미지를 업로드하면 AI가 자동으로 장부를 작성해줍니다. (현재는 데모 모드)")
+    # --- 카테고리 목록 DB 로드 ---
+    if 'categories' not in st.session_state:
+        try:
+            cat_list = get_all_categories()
+            st.session_state['categories'] = {c["name"]: c["id"] for c in cat_list}
+        except Exception as e:
+            st.warning(f"카테고리 로드 실패: {e}")
+            st.session_state['categories'] = {}
 
-    # --- 영수증 업로드 (세로 배치) ---
-    st.subheader("📸 영수증 업로드")
-    uploaded_file = st.file_uploader("영수증 사진을 선택하세요", type=['jpg', 'jpeg', 'png'])
-    if uploaded_file:
-        st.image(uploaded_file, caption="업로드된 영수증", use_container_width=True)
+    # --- 탭 메뉴로 페이지 전환 ---
+    tab_upload, tab_analytics = st.tabs(["🧾 영수증 업로드", "📊 지출 분석"])
 
-    # --- 데이터 추출 결과 (세로 배치) ---
-    if uploaded_file:
+    with tab_upload:
+        page_upload()
+    with tab_analytics:
+        page_analytics()
+
+
+# =============================================================================
+# 5-1. 영수증 업로드 페이지 (모바일 - 세로 1컬럼)
+# =============================================================================
+def page_upload():
+    category_names = list(st.session_state['categories'].keys())
+
+    st.markdown("### 🧾 영수증 OCR 장부")
+    st.info("영수증 사진을 업로드하면 AI가 자동으로 내용을 인식합니다.")
+
+    # --- 파일 업로드 ---
+    uploaded_files = st.file_uploader(
+        "영수증 사진 선택 (JPG, PNG)",
+        type=['jpg', 'jpeg', 'png'],
+        accept_multiple_files=True,
+        key="m_uploader"
+    )
+
+    # --- OCR 파이프라인 실행 ---
+    if 'ocr_results' not in st.session_state:
+        st.session_state['ocr_results'] = {}
+
+    if uploaded_files:
+        for file in uploaded_files:
+            if file.name not in st.session_state['ocr_results']:
+                with st.spinner(f"🔍 {file.name} OCR 처리 중..."):
+                    try:
+                        suffix = Path(file.name).suffix
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                        tmp.write(file.getbuffer())
+                        tmp.close()
+                        result = run_pipeline(tmp.name, verbose=False)
+                        st.session_state['ocr_results'][file.name] = result
+                        os.unlink(tmp.name)
+                    except Exception as e:
+                        st.session_state['ocr_results'][file.name] = {
+                            "validation_status": "error",
+                            "error_msg": str(e)
+                        }
+
         st.markdown("---")
-        st.subheader("📝 데이터 추출 결과")
+        st.markdown(f"**🔍 추출 결과 ({len(uploaded_files)}건)**")
 
-        with st.spinner("이미지에서 텍스트를 추출하는 중..."):
-            time.sleep(2)
-            mock_data = {"상호명": "스타벅스 강남점", "날짜": "2026-02-04", "금액": 15600, "카테고리": "식비"}
+        temp_data_list = []
 
-        st.success("추출 완료!")
+        for idx, file in enumerate(uploaded_files):
+            ocr_data = st.session_state['ocr_results'].get(file.name, {})
 
-        with st.form("m_receipt_form"):
-            store_name = st.text_input("상호명", value=mock_data["상호명"])
-            date_val = st.text_input("날짜", value=mock_data["날짜"])
-            amount = st.number_input("금액", value=mock_data["금액"], step=100)
-            category = st.selectbox("카테고리", ["식비", "교통비", "생활용품", "기타"], index=0)
-            submit_btn = st.form_submit_button("💾 장부에 저장하기", use_container_width=True)
+            parsed_store = ocr_data.get("store_name", "")
+            parsed_date_str = ocr_data.get("transaction_date", "")
+            parsed_total = ocr_data.get("total", 0)
 
-            if submit_btn:
+            from datetime import date as _date
+            try:
+                parsed_date = _date.fromisoformat(parsed_date_str)
+            except (ValueError, TypeError):
+                parsed_date = _date.today()
+            parsed_category = ocr_data.get("category", "기타")
+            parsed_payment = ocr_data.get("payment", "")
+            validation_status = ocr_data.get("validation_status", "error")
+
+            with st.expander(f"📄 #{idx+1} {file.name}", expanded=(idx == 0)):
+                # 모바일: 이미지를 위에, 폼을 아래에 세로 배치
+                st.image(file, use_column_width=True)
+
+                if validation_status == "success":
+                    st.success("✅ OCR 인식 성공")
+                elif validation_status == "review_required":
+                    st.warning("⚠️ 검토 필요")
+                else:
+                    st.error("❌ OCR 인식 실패")
+
+                store_name = st.text_input("상호명", value=parsed_store, key=f"m_store_{idx}")
+                date_val = st.date_input("날짜", value=parsed_date, key=f"m_date_{idx}")
+                amount = st.number_input("금액", value=parsed_total, step=100, key=f"m_amt_{idx}")
+
+                cat_index = 0
+                if parsed_category in category_names:
+                    cat_index = category_names.index(parsed_category)
+                category = st.selectbox(
+                    "카테고리", category_names, index=cat_index, key=f"m_cat_{idx}"
+                ) if category_names else st.text_input("카테고리", value=parsed_category, key=f"m_cat_{idx}")
+
+                selected_cat_id = st.session_state['categories'].get(category)
+
+                file_suffix = Path(file.name).suffix.lower()
+                content_type = "image/png" if file_suffix == ".png" else "image/jpeg"
+
+                temp_data_list.append({
+                    "store_name": store_name,
+                    "date": date_val.strftime('%Y-%m-%d'),
+                    "total_amount": amount,
+                    "category": category,
+                    "category_id": selected_cat_id,
+                    "payment": parsed_payment,
+                    "payment_method_id": PAYMENT_MAP.get(parsed_payment),
+                    "file_name": file.name,
+                    "file_bytes": file.getvalue(),
+                    "content_type": content_type,
+                })
+
+        # --- 일괄 저장 버튼 ---
+        st.markdown("")
+        if st.button(
+            f"💾 {len(uploaded_files)}건 장부에 저장",
+            use_container_width=True, type="primary"
+        ):
+            import time as _time
+            success_count = 0
+            fail_count = 0
+
+            for data in temp_data_list:
+                try:
+                    user_pk = st.session_state['user_pk']
+                    name_part, ext_part = os.path.splitext(data['file_name'])
+                    storage_path = f"user_{user_pk}/{name_part}_{int(_time.time())}{ext_part}"
+                    upload_result = upload_image(
+                        file_path=storage_path,
+                        file_bytes=data["file_bytes"],
+                        content_type=data["content_type"]
+                    )
+                    create_receipt(
+                        user_id=user_pk,
+                        category_id=data["category_id"],
+                        payment_method_id=data["payment_method_id"],
+                        date=data["date"],
+                        total_amount=data["total_amount"],
+                        store_name=data["store_name"],
+                        image_path=upload_result["path"],
+                    )
+                    ocr_cache = st.session_state['ocr_results'].get(data["file_name"])
+                    if ocr_cache:
+                        ocr_cache["image_path"] = upload_result["path"]
+
+                    success_count += 1
+                    st.session_state['history'].append({
+                        "날짜": data["date"],
+                        "상호명": data["store_name"],
+                        "금액": data["total_amount"],
+                        "카테고리": data["category"],
+                    })
+                except Exception as e:
+                    fail_count += 1
+                    st.error(f"❌ {data['store_name']} 저장 실패: {e}")
+
+            if success_count > 0:
                 st.balloons()
-                new_data = {"날짜": date_val, "상호명": store_name, "금액": amount, "카테고리": category}
-                st.session_state['history'].append(new_data)
-                st.success(f"✅ {store_name} 저장 완료!")
+                st.success(f"✅ {success_count}건 저장 완료!" + (f" ({fail_count}건 실패)" if fail_count else ""))
+            st.session_state['ocr_results'] = {}
+            time.sleep(1)
+            st.rerun()
 
-    # --- 장부 내역 (세로 배치) ---
+    # --- 최근 장부 내역 ---
     st.markdown("---")
-    st.subheader("📅 최근 장부 내역")
+    st.markdown("**📅 최근 장부 내역**")
     if st.session_state['history']:
         df = pd.DataFrame(st.session_state['history'])
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df.iloc[::-1], use_container_width=True)
     else:
-        st.write("아직 저장된 내역이 없습니다.")
+        st.caption("아직 저장된 내역이 없습니다.")
+
+
+# =============================================================================
+# 5-2. 지출 분석 페이지 (모바일 - 세로 1컬럼)
+# =============================================================================
+def page_analytics():
+    import plotly.graph_objects as go
+    from datetime import datetime
+
+    st.markdown("### 📊 지출 분석")
+
+    user_pk = st.session_state.get('user_pk')
+    if not user_pk:
+        st.warning("사용자 정보를 불러올 수 없습니다.")
+        return
+
+    try:
+        receipts = get_receipts_by_user(user_pk)
+    except Exception as e:
+        st.error(f"데이터 조회 실패: {e}")
+        return
+
+    if not receipts:
+        st.info("저장된 영수증이 없습니다. 영수증을 업로드해 주세요.")
+        return
+
+    # --- 데이터 준비 ---
+    cat_id_to_name = {v: k for k, v in st.session_state['categories'].items()}
+
+    df = pd.DataFrame(receipts)
+    df['날짜'] = pd.to_datetime(df['date'])
+    df['연월'] = df['날짜'].dt.strftime('%Y-%m')
+    df['금액'] = df['total_amount']
+    df['상호명'] = df['store_name']
+    df['카테고리'] = df['category_id'].map(cat_id_to_name).fillna("기타")
+
+    # --- 연월 선택 ---
+    all_months = sorted(df['연월'].unique().tolist())
+    current_month = datetime.now().strftime('%Y-%m')
+    if current_month in all_months:
+        default_idx = all_months.index(current_month)
+    else:
+        default_idx = len(all_months) - 1
+
+    selected_month = st.selectbox(
+        "조회할 연월", all_months, index=default_idx, key="m_month_select"
+    )
+    df_filtered = df[df['연월'] == selected_month]
+
+    # --- 요약 지표 ---
+    st.markdown(f"**💰 {selected_month} 요약**")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("총 지출", f"{df_filtered['금액'].sum():,.0f}원")
+    m2.metric("영수증", f"{len(df_filtered)}건")
+    avg_val = df_filtered['금액'].mean() if len(df_filtered) > 0 else 0
+    m3.metric("건당 평균", f"{avg_val:,.0f}원")
+
+    st.markdown("---")
+
+    # --- 월별 추이 그래프 (세로 배치) ---
+    chart_type = st.radio(
+        "그래프 유형", ["막대 그래프", "선 그래프"],
+        horizontal=True, key="m_chart_type"
+    )
+
+    monthly_sum = df.groupby(['연월', '카테고리'])['금액'].sum().reset_index()
+    fig = go.Figure()
+
+    if chart_type == "막대 그래프":
+        for cat_name in monthly_sum['카테고리'].unique():
+            subset = monthly_sum[monthly_sum['카테고리'] == cat_name]
+            fig.add_trace(go.Bar(
+                x=subset['연월'].tolist(),
+                y=subset['금액'].tolist(),
+                name=cat_name,
+                text=subset['금액'].tolist(),
+                textposition='auto'
+            ))
+        fig.update_layout(barmode='group')
+    else:
+        for cat_name in monthly_sum['카테고리'].unique():
+            subset = monthly_sum[monthly_sum['카테고리'] == cat_name]
+            fig.add_trace(go.Scatter(
+                x=subset['연월'].tolist(),
+                y=subset['금액'].tolist(),
+                name=cat_name,
+                mode='lines+markers+text',
+                text=subset['금액'].tolist(),
+                textposition='top center'
+            ))
+
+    fig.update_layout(
+        title="월별 지출 추이",
+        height=350,
+        xaxis_title="연월",
+        yaxis_title="금액",
+        xaxis_type='category',
+        margin=dict(l=10, r=10, t=40, b=30),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- 카테고리 파이 차트 ---
+    cat_sum = df_filtered.groupby('카테고리')['금액'].sum().reset_index()
+    fig_pie = px.pie(
+        cat_sum, values='금액', names='카테고리',
+        title=f"{selected_month} 카테고리별 비중", hole=0.4
+    )
+    fig_pie.update_layout(
+        height=350,
+        margin=dict(l=10, r=10, t=40, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2)
+    )
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+    # --- AI 월별 조언 ---
+    st.markdown("---")
+    st.markdown("**🤖 AI 월별 지출 조언**")
+
+    current_month_now = datetime.now().strftime('%Y-%m')
+    df_current_month = df[df['연월'] == current_month_now]
+
+    if len(df_current_month) == 0:
+        st.info(f"📭 {current_month_now} 이번 달 지출 내역이 없습니다.")
+    else:
+        if st.button("🔍 이번 달 AI 조언 받기", key="m_ai_advice_btn", type="primary", use_container_width=True):
+            with st.spinner("AI가 분석 중..."):
+                try:
+                    import google.generativeai as genai
+                    from utils.config import GEMINI_API_KEY
+                    import json as _json
+
+                    if not GEMINI_API_KEY:
+                        st.error("GEMINI_API_KEY가 .env에 설정되지 않았습니다.")
+                    else:
+                        genai.configure(api_key=GEMINI_API_KEY)
+                        model = genai.GenerativeModel("gemini-2.5-flash")
+
+                        advice_data = []
+                        for _, r in df_current_month.iterrows():
+                            advice_data.append({
+                                "date": r['날짜'].strftime('%Y-%m-%d'),
+                                "store_name": r['상호명'],
+                                "total_amount": int(r['금액']),
+                                "category": r['카테고리']
+                            })
+
+                        prompt = f"""다음은 사용자의 {current_month_now} 월 소비 데이터입니다.
+
+{_json.dumps(advice_data, ensure_ascii=False, indent=2)}
+
+다음 내용을 한국어로 간결하게 분석해주세요:
+
+1. 소비 패턴 요약
+2. 과소비 카테고리
+3. 절약을 위한 구체적 조언
+4. 한 줄 요약
+
+마크다운 형식으로 작성해주세요."""
+
+                        response = model.generate_content(prompt)
+                        st.session_state['ai_advice'] = response.text
+                except Exception as e:
+                    st.error(f"AI 조언 생성 실패: {e}")
+
+        if st.session_state.get('ai_advice'):
+            st.markdown("---")
+            st.markdown(st.session_state['ai_advice'])
+
+    # --- 영수증 내역 (페이지네이션 + 이미지) ---
+    st.markdown("---")
+    st.markdown("**📅 전체 영수증 내역**")
+
+    display_df = df.sort_values('날짜', ascending=False).reset_index(drop=True)
+
+    PAGE_SIZE = 5  # 모바일은 5건씩
+    total_rows = len(display_df)
+    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    if 'receipt_page' not in st.session_state:
+        st.session_state['receipt_page'] = 1
+
+    current_page = st.session_state['receipt_page']
+    start_idx = (current_page - 1) * PAGE_SIZE
+    end_idx = min(start_idx + PAGE_SIZE, total_rows)
+    page_df = display_df.iloc[start_idx:end_idx]
+
+    for i, row in page_df.iterrows():
+        date_str = row['날짜'].strftime('%Y-%m-%d')
+        label = f"{date_str} | {row['상호명']} | {row['금액']:,.0f}원"
+        with st.expander(label):
+            st.caption(f"카테고리: {row['카테고리']}")
+            image_path = row.get('image_path')
+            if image_path and str(image_path) != 'None':
+                try:
+                    img_url = get_public_url(image_path)
+                    st.image(img_url, caption=f"{row['상호명']} 영수증", use_column_width=True)
+                except Exception as e:
+                    st.warning(f"이미지 로드 실패: {e}")
+            else:
+                st.caption("영수증 이미지 없음")
+
+    # 페이지 네비게이션
+    if total_pages > 1:
+        nav1, nav2, nav3 = st.columns([1, 2, 1])
+        with nav1:
+            if st.button("◀", disabled=(current_page <= 1), key="m_prev", use_container_width=True):
+                st.session_state['receipt_page'] = current_page - 1
+                st.rerun()
+        with nav2:
+            st.markdown(
+                f"<div style='text-align:center; padding:8px 0;'>{current_page} / {total_pages}</div>",
+                unsafe_allow_html=True
+            )
+        with nav3:
+            if st.button("▶", disabled=(current_page >= total_pages), key="m_next", use_container_width=True):
+                st.session_state['receipt_page'] = current_page + 1
+                st.rerun()
 
 
 # =============================================================================
 # 6. 실행 로직
-# =============================================================================
-# 모바일 CSS 적용 후, 로그인 상태에 따라 분기
 # =============================================================================
 apply_mobile_style()
 
