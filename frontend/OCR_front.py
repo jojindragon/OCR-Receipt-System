@@ -13,8 +13,8 @@ from streamlit_js_eval import streamlit_js_eval
 
 from backend.api.users import get_user_by_user_id, create_user
 from backend.api.categories import get_all_categories
-from backend.api.receipts import create_receipt, get_receipts_by_user
-from backend.api.storage import upload_image
+from backend.api.receipts import create_receipt, get_receipts_by_user, delete_receipt
+from backend.api.storage import upload_image, get_public_url, delete_image
 from services.ocr_pipeline2.pipeline.run_pipeline import run_pipeline
 from services.ocr_pipeline2.persistence.db_mapper import CATEGORY_MAP, PAYMENT_MAP
 
@@ -478,13 +478,12 @@ def page_analytics():
     st.divider()
     st.subheader("🤖 AI 월별 지출 조언")
 
-    current_month_now = datetime.now().strftime('%Y-%m')
-    df_current_month = df[df['연월'] == current_month_now]
+    df_advice_month = df[df['연월'] == selected_month]
 
-    if len(df_current_month) == 0:
-        st.info(f"📭 {current_month_now} 이번 달 지출 내역이 없습니다.")
+    if len(df_advice_month) == 0:
+        st.info(f"📭 {selected_month} 지출 내역이 없습니다.")
     else:
-        if st.button("🔍 이번 달 AI 조언 받기", key="ai_advice_btn", type="primary"):
+        if st.button(f"🔍 {selected_month} AI 조언 받기", key="ai_advice_btn", type="primary"):
             with st.spinner("AI가 지출 내역을 분석하고 있습니다..."):
                 try:
                     import google.generativeai as genai
@@ -497,9 +496,8 @@ def page_analytics():
                         genai.configure(api_key=GEMINI_API_KEY)
                         model = genai.GenerativeModel("gemini-2.5-flash")
 
-                        # 이번 달 데이터를 프롬프트용으로 가공
                         advice_data = []
-                        for _, r in df_current_month.iterrows():
+                        for _, r in df_advice_month.iterrows():
                             advice_data.append({
                                 "date": r['날짜'].strftime('%Y-%m-%d'),
                                 "store_name": r['상호명'],
@@ -507,7 +505,7 @@ def page_analytics():
                                 "category": r['카테고리']
                             })
 
-                        prompt = f"""다음은 사용자의 {current_month_now} 월 소비 데이터입니다.
+                        prompt = f"""다음은 사용자의 {selected_month} 월 소비 데이터입니다.
 
 {_json.dumps(advice_data, ensure_ascii=False, indent=2)}
 
@@ -522,15 +520,16 @@ def page_analytics():
 
                         response = model.generate_content(prompt)
                         st.session_state['ai_advice'] = response.text
+                        st.session_state['ai_advice_month'] = selected_month
                 except Exception as e:
                     st.error(f"AI 조언 생성 실패: {e}")
 
-        # 저장된 조언이 있으면 표시
-        if st.session_state.get('ai_advice'):
+        # 저장된 조언이 있으면 표시 (해당 연월 조언만)
+        if st.session_state.get('ai_advice') and st.session_state.get('ai_advice_month') == selected_month:
             st.markdown("---")
             st.markdown(st.session_state['ai_advice'])
 
-    # --- [전체 영수증 내역] (페이지네이션 + 이미지 보기) ---
+    # --- [전체 영수증 내역] (페이지네이션 + 선택 삭제 + 이미지 보기) ---
     st.divider()
     st.subheader("📅 전체 영수증 내역")
 
@@ -551,24 +550,98 @@ def page_analytics():
     end_idx = min(start_idx + PAGE_SIZE, total_rows)
     page_df = display_df.iloc[start_idx:end_idx]
 
-    # 테이블 표시 (각 행을 클릭 가능한 expander로 구성)
+    # --- [전체 선택 체크박스] ---
+    select_all = st.checkbox("전체 선택", key="select_all_receipts")
+
+    # 테이블 표시 (체크박스 + expander)
     for i, row in page_df.iterrows():
         date_str = row['날짜'].strftime('%Y-%m-%d')
-        label = f"{date_str}  |  {row['상호명']}  |  {row['금액']:,.0f}원  |  {row['카테고리']}"
-        with st.expander(label):
-            # 영수증 이미지 표시 (너비 제한)
-            image_path = row.get('image_path')
-            if image_path and str(image_path) != 'None':
-                try:
-                    from backend.api.storage import get_public_url
-                    img_url = get_public_url(image_path)
-                    img_col, _ = st.columns([1, 2])
-                    with img_col:
-                        st.image(img_url, caption=f"{row['상호명']} 영수증", use_column_width=True)
-                except Exception as e:
-                    st.warning(f"이미지를 불러올 수 없습니다: {e}")
-            else:
-                st.info("저장된 영수증 이미지가 없습니다.")
+        receipt_id = row.get('id')
+
+        chk_col, exp_col = st.columns([0.3, 9.7])
+
+        with chk_col:
+            checked = st.checkbox(
+                "sel", key=f"chk_{receipt_id}",
+                value=select_all, label_visibility="collapsed"
+            )
+
+        with exp_col:
+            label = f"{date_str}  |  {row['상호명']}  |  {row['금액']:,.0f}원  |  {row['카테고리']}"
+            with st.expander(label):
+                image_path = row.get('image_path')
+                if image_path and str(image_path) != 'None':
+                    try:
+                        img_url = get_public_url(image_path)
+                        img_col, _ = st.columns([1, 2])
+                        with img_col:
+                            st.image(img_url, caption=f"{row['상호명']} 영수증", use_column_width=True)
+                    except Exception as e:
+                        st.warning(f"이미지를 불러올 수 없습니다: {e}")
+                else:
+                    st.info("저장된 영수증 이미지가 없습니다.")
+
+    # --- [선택 삭제 버튼] ---
+    # 현재 페이지에서 체크된 영수증 ID 수집
+    selected_ids = []
+    selected_image_paths = []
+    for i, row in page_df.iterrows():
+        receipt_id = row.get('id')
+        if st.session_state.get(f"chk_{receipt_id}", False):
+            selected_ids.append(receipt_id)
+            img_path = row.get('image_path')
+            if img_path and str(img_path) != 'None':
+                selected_image_paths.append(img_path)
+
+    st.write("")
+    del_col1, del_col2 = st.columns([3, 7])
+    with del_col1:
+        if st.button(
+            f"🗑️ 선택 영수증 삭제 ({len(selected_ids)}건)",
+            disabled=(len(selected_ids) == 0),
+            use_container_width=True,
+            type="primary"
+        ):
+            st.session_state['confirm_delete'] = True
+            st.session_state['delete_ids'] = selected_ids
+            st.session_state['delete_image_paths'] = selected_image_paths
+
+    # --- [삭제 확인 다이얼로그] ---
+    if st.session_state.get('confirm_delete'):
+        ids_to_delete = st.session_state.get('delete_ids', [])
+        imgs_to_delete = st.session_state.get('delete_image_paths', [])
+
+        st.warning(f"⚠️ 정말 {len(ids_to_delete)}건의 영수증을 삭제하시겠습니까? (DB + 이미지 모두 삭제됩니다)")
+        conf_col1, conf_col2, _ = st.columns([1, 1, 3])
+        with conf_col1:
+            if st.button("삭제 확인", type="primary", key="confirm_yes"):
+                success = 0
+                fail = 0
+                for rid in ids_to_delete:
+                    try:
+                        delete_receipt(rid)
+                        success += 1
+                    except Exception as e:
+                        fail += 1
+                        st.error(f"DB 삭제 실패 (id={rid}): {e}")
+                for img_path in imgs_to_delete:
+                    try:
+                        delete_image(img_path)
+                    except Exception:
+                        pass  # 이미지 삭제 실패는 무시 (DB 삭제가 핵심)
+                st.session_state['confirm_delete'] = False
+                st.session_state.pop('delete_ids', None)
+                st.session_state.pop('delete_image_paths', None)
+                if success > 0:
+                    st.success(f"✅ {success}건 삭제 완료" + (f" ({fail}건 실패)" if fail else ""))
+                time.sleep(1)
+                st.rerun()
+        with conf_col2:
+            if st.button("취소", key="confirm_no"):
+                st.session_state['confirm_delete'] = False
+                st.session_state.pop('delete_ids', None)
+                st.session_state.pop('delete_image_paths', None)
+                st.rerun()
 
     # 페이지 네비게이션
     if total_pages > 1:
