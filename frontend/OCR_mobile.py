@@ -27,7 +27,7 @@ from pathlib import Path
 from streamlit_js_eval import streamlit_js_eval
 
 # 프로젝트 루트를 path에 추가
-sys.path.insert(0, str(Path(__file__).parent.parent))
+#sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backend.api.users import get_user_by_user_id, create_user
 from backend.api.categories import get_all_categories

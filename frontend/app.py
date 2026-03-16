@@ -15,10 +15,14 @@
 # 의존성:
 #       pip install streamlit-js-eval
 # =============================================================================
-
+import sys
 import streamlit as st
 from streamlit_js_eval import streamlit_js_eval
 from pathlib import Path
+
+# ↓ 이 두 줄 추가 (exec 실행 전에 path 잡아줌)
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # =============================================================================
 # 1. 페이지 기본 설정
