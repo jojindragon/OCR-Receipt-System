@@ -536,6 +536,76 @@ def page_analytics():
     # 최신순 정렬
     display_df = df.sort_values('날짜', ascending=False).reset_index(drop=True)
 
+    # --- [장부 다운로드] ---
+    import io
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        # ── 전체 내역 시트 ──
+        all_df = display_df[['날짜', '상호명', '금액', '카테고리']].copy()
+        all_df['날짜'] = all_df['날짜'].dt.strftime('%Y-%m-%d')
+
+        total_amount = all_df['금액'].sum()
+        avg_amount = all_df['금액'].mean() if len(all_df) > 0 else 0
+        cat_summary = all_df.groupby('카테고리')['금액'].sum().reset_index()
+        cat_summary.columns = ['카테고리', '합계']
+        cat_summary = cat_summary.sort_values('합계', ascending=False)
+
+        summary_rows = pd.DataFrame([
+            {'날짜': '총 지출', '상호명': '', '금액': total_amount, '카테고리': ''},
+            {'날짜': '건당 평균', '상호명': '', '금액': round(avg_amount), '카테고리': ''},
+            {'날짜': '', '상호명': '', '금액': '', '카테고리': ''},
+            {'날짜': '[카테고리별 합계]', '상호명': '', '금액': '', '카테고리': ''},
+        ])
+        cat_rows = pd.DataFrame({
+            '날짜': cat_summary['카테고리'].values,
+            '상호명': '',
+            '금액': cat_summary['합계'].values,
+            '카테고리': ''
+        })
+        spacer = pd.DataFrame([{'날짜': '', '상호명': '', '금액': '', '카테고리': ''}])
+        header_row = pd.DataFrame([{'날짜': '[전체 내역]', '상호명': '', '금액': '', '카테고리': ''}])
+
+        full_sheet = pd.concat([summary_rows, cat_rows, spacer, header_row, all_df], ignore_index=True)
+        full_sheet.to_excel(writer, sheet_name='전체 내역', index=False)
+
+        # ── 월별 시트 ──
+        months_sorted = sorted(display_df['연월'].unique().tolist())
+        for month in months_sorted:
+            month_data = display_df[display_df['연월'] == month][['날짜', '상호명', '금액', '카테고리']].copy()
+            month_data['날짜'] = month_data['날짜'].dt.strftime('%Y-%m-%d')
+            month_data = month_data.sort_values('날짜', ascending=False).reset_index(drop=True)
+
+            m_total = month_data['금액'].sum()
+            m_avg = month_data['금액'].mean() if len(month_data) > 0 else 0
+            m_cat = month_data.groupby('카테고리')['금액'].sum().reset_index()
+            m_cat.columns = ['카테고리', '합계']
+            m_cat = m_cat.sort_values('합계', ascending=False)
+
+            m_summary = pd.DataFrame([
+                {'날짜': '총 지출', '상호명': '', '금액': m_total, '카테고리': ''},
+                {'날짜': '건당 평균', '상호명': '', '금액': round(m_avg), '카테고리': ''},
+                {'날짜': '', '상호명': '', '금액': '', '카테고리': ''},
+                {'날짜': '[카테고리별 합계]', '상호명': '', '금액': '', '카테고리': ''},
+            ])
+            m_cat_rows = pd.DataFrame({
+                '날짜': m_cat['카테고리'].values,
+                '상호명': '',
+                '금액': m_cat['합계'].values,
+                '카테고리': ''
+            })
+            m_header = pd.DataFrame([{'날짜': '', '상호명': '', '금액': '', '카테고리': ''}])
+            m_detail_header = pd.DataFrame([{'날짜': '[상세 내역]', '상호명': '', '금액': '', '카테고리': ''}])
+
+            month_sheet = pd.concat([m_summary, m_cat_rows, m_header, m_detail_header, month_data], ignore_index=True)
+            month_sheet.to_excel(writer, sheet_name=month, index=False)
+
+    st.download_button(
+        "📥 장부 다운로드",
+        data=excel_buffer.getvalue(),
+        file_name=f"장부_{st.session_state['user_id']}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
     # 페이지네이션 설정
     PAGE_SIZE = 10
     total_rows = len(display_df)
